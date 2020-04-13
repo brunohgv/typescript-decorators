@@ -1,47 +1,67 @@
-function logClass(message: string) : ClassDecorator {
-    console.log(`${message} evaluated`)
-    return function (constructor: Function) : void {
-        console.log(`${message} called`)
+import APIServer from "./APIServer"
+import { Request, Response, Router } from 'express'
+
+const server = new APIServer()
+
+class APIRoutes {
+
+    @route('get', '/')
+    @logRoute()
+    public indexRoute(req: Request, res: Response) {
+        return {
+            Hello: 'World'
+        }
+    }
+
+    @route('get', '/people')
+    @logRoute()
+    @authenticate('123456')
+    public peopleRoute(req: Request, res: Response) {
+        return {
+            people: [
+                {
+                    name: 'Bruno Vasconcelos'
+                },
+                {
+                    name: 'Adriana Carvalho'
+                }
+            ]
+        }
+    }
+
+}
+
+function route(method: string, path: string) : MethodDecorator {
+    return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+        server.app[method](path, (req: Request, res: Response) => {
+            return res.status(200).json(descriptor.value(req, res))
+        })
     }
 }
 
-function logProperty(message: string) : PropertyDecorator {
-    console.log(`${message} evaluated`)
-    return function(target: Object, propertyKey: string) : void {
-        console.log(`${message} called`)
+function logRoute() : MethodDecorator {
+    return function (target: Object, propertyKeys: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value
+        descriptor.value = function(...args: any[]) {
+            let req = args[0] as Request
+            console.log(`${req.method} ${req.url}`)
+            return original.apply(this, args)
+        }
     }
 }
 
-function logMethod(message: string) : MethodDecorator {
-    console.log(`${message} evaluated`)
-    return function(target: Object, propertyKey: string, descriptor: PropertyDescriptor) : void {
-        console.log(`${message} called`)
+function authenticate(key: string) : MethodDecorator {
+    return function (target: Object, propertyKey: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value
+        descriptor.value = function (...args: any[]) {
+            const req = args[0] as Request
+            const res = args[1] as Response
+            const headers = req.headers
+            if (headers.hasOwnProperty('apikey') && headers.apikey === key) {
+                return original.apply(this.args)
+            }
+            return res.status(401).json({ error: 'Unauthorized' })
+        }
     }
 }
-
-function logParameter(message: string) : ParameterDecorator {
-    console.log(`${message} evaluated`)
-    return function(target: Object, propertyKey: string, parameterIndex: number) : void {
-        console.log(`${message} called`)
-    }
-}
-
-@logClass("Class Decorator")
-class Person {
-    private _directReports: Person[]
-
-    @logProperty('Property Decorator')
-    public emailAddress: string
-
-    constructor(public firstName: string, public lastName: string) {
-        this._directReports = []
-    }
-
-    @logMethod('Method Decorator')
-    @logMethod('Method Decorator 2')
-    public addDirectReport(@logParameter('Parameter Decorator') person: Person) {
-        this._directReports.push(person)
-    }
-}
-
-const person = new Person('Bruno', 'Vasconcelos')
+server.start()
